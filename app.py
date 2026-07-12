@@ -3,11 +3,12 @@ from flask_cors import CORS
 import os
 import datetime
 import random
+from PIL import Image
+import hashlib
 
 app = Flask(__name__)
-CORS(app)  # 允许手机APP跨域访问
+CORS(app)
 
-# 创建“上传文件夹”用来存图
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -17,7 +18,6 @@ def home():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    # 1. 检查是否有图片发过来
     if 'image' not in request.files:
         return jsonify({'error': '没有图片文件'}), 400
     
@@ -25,24 +25,41 @@ def predict():
     if file.filename == '':
         return jsonify({'error': '文件名为空'}), 400
 
-    # 2. 保存图片到服务器（方便你检查图片有没有传成功）
+    # 保存图片
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"received_{timestamp}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
     
-    # 3. ！！！这里是“模拟推理”，不调用真正的神经网络模型！！！
-    #    生成一个 0~1 之间的随机数，假装是预测概率
-    simulated_probability = round(random.uniform(0.1, 0.99), 4)
+    # ===== 提取图片信息 =====
+    img = Image.open(filepath)
+    width, height = img.size
+    file_size = os.path.getsize(filepath) / 1024  # KB
+    file_format = img.format if img.format else "unknown"
+    mode = img.mode
+    channels = len(img.getbands())
+    is_color = channels >= 3
+    original_filename = file.filename
     
-    # 4. 返回 JSON 结果给手机
+    # 计算 MD5
+    with open(filepath, "rb") as f:
+        md5_hash = hashlib.md5(f.read()).hexdigest()
+    
     return jsonify({
         'code': 200,
-        'message': '推理模拟成功（模型尚未接入）',
-        'prediction': simulated_probability,
+        'message': '图像分析完成',
+        'image_width': width,
+        'image_height': height,
+        'file_size_kb': round(file_size, 2),
+        'format': file_format,
+        'color_mode': mode,
+        'channels': channels,
+        'is_color': is_color,
+        'original_filename': original_filename,
+        'md5': md5_hash,
         'saved_path': filepath
     })
 
 if __name__ == '__main__':
-    # 让服务器在本地 5000 端口运行，手机和电脑连同一个 WiFi 就能访问
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
